@@ -1,0 +1,19 @@
+---
+title: "Project Red Scare"
+author: "Daniel Truver"
+date: "4/14/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(rvest)
+library(ggplot2)
+library(stringr)
+# https://www.brookings.edu/multi-chapter-report/vital-statistics-on-congress/
+```
+
+```{r}
+partisan = read.csv("partisan_congress.csv")
+```
