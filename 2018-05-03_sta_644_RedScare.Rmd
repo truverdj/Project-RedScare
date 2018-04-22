@@ -247,6 +247,24 @@ What we should take away from this graph is that voter turnout does not display 
 Now let's hit this monster with an linear model and see what happens.
 
 ```{r}
-
+from1974_lm_house = lm(red_rep ~ red_pres+red_pres_in_election+red_mean+
+                         midterm + HouseElections, 
+                       data = from1974_df_house)
+summary(from1974_lm_house)
 ```
+
+With this set of predictors, our most significant correlation to `red_rep` is `red_mean`, the variable indicating the mean spending of republican candidates in the election. Note that the value may appear small, but it is in dollars. Unfortunately, if we throw `blue_mean`, the democratic spending, into the model, we get:
+
+```{r}
+from1974_lm_house = lm(red_rep ~ red_pres+red_pres_in_election+blue_mean+
+                        midterm + HouseElections, 
+                       data = from1974_df_house)
+summary(from1974_lm_house)
+```
+
+Democratic spending is also positively correlated with more republicans in the house. This model, however, also shows a significant negative correlation between an incumbant red president at the time of the election and proportion of red represenation in the House.
+
+The interpretation for the above models, with respect to money, seems to be that when there is more money involved, republicans are more likely to gain seats in the House. Again, this is not a causal model. Democrats should not look at this and think, "well, if we spend less money, the republicans will lose ground."
+
+
 
