@@ -23,7 +23,7 @@ After the presidential election of 2016, and once they got through some of the d
 
 ##### EDA
 
-The following data come from the Brooking's institute and were last update in September of 2017. Our first concern should be if a time series model is appropriate. We also want to know if the intended process is stationary and what seasonal trends appear. 
+The following data come from the Brooking's institute and were last updated in September of 2017. Our first concern should be if a time series model is appropriate. We also want to know if the intended process is stationary and what seasonal trends appear. 
 
 ```{r}
 partisan = read.csv("partisan_congress.csv", stringsAsFactors = FALSE)
@@ -109,15 +109,15 @@ ggtsdisplay(diff(senate.ts))
 ggtsdisplay(diff(house.ts))
 ```
 
-Differencing the Senate seems to reveal as seasonal component every 3 congresses. If we recall our high school government classes, this makes sense; Senate seats only come up for re-election every six years (3 session of Congress). 
+Differencing the Senate seems to reveal as seasonal component every 3 congresses. If we recall our high school government classes, this makes sense; Senate seats only come up for re-election every six years (3 sessions of Congress). 
 
 ```{r}
-basicSenate = Arima(senate.ts, order = c(0,1,0), seasonal = list(order = c(1,0,0), period = 3))
+Senate.arima = Arima(senate.ts, order = c(0,1,0), seasonal = list(order = c(1,0,0), period = 3))
 {
   plot(senate.ts)
   # points(time(fitted(basicSenate))-deltat(basicSenate), basicSenate$fitted,
   #        col = "red", type = "l")
-  points( basicSenate$fitted, col = "red", type = "l")
+  points(Senate.arima$fitted, col = "red", type = "l")
 }
 basicHouse = Arima(house.ts, order = c(0,1,1))
 {
@@ -223,7 +223,7 @@ We should probably highlight these two relations.
 g_red = ggplot(data = from1974_df_house, aes(x = red_mean, y = red_rep)) +
   geom_point() + geom_smooth(method = "lm") +
   ggtitle("Proportion Red in the House vs Mean Campaign Spending of Republicans") +
-  xlab("Mean Democrat Campaign Spending") + ylab("Proportion Red")
+  xlab("Mean Republican Campaign Spending") + ylab("Proportion Red")
 g_blue = ggplot(data = from1974_df_house, aes(x = blue_mean, y = red_rep)) +
   geom_point() + geom_smooth(method = "lm") +
   ggtitle("Proportion Red in the House vs Mean Campaign Spending of Democrats") +
@@ -294,5 +294,89 @@ newHouse.arima
 }
 ```
 
-Oh look, disappointment. 
+Unfortunately, these predictors only reach from the 94th to the 114th Congress. We will have to fall back on our more basic model for the remaining observations. Congresses 87 to 93 we fit with out previous model based on the afiliation of the president and the timing of the election. Congresses 94 to 114 we fit with the 1974 model and its added predictors. 
+
+```{r}
+firstModelObs = c(which(partisan$congress < 94))
+firstModelStructure = houseByPres$fitted.values[firstModelObs]
+house_structure_full = c(firstModelStructure, house_structure)
+newerHouse.ts = ts(data = partisan$red_rep[-29] - house_structure_full,
+                start = min(partisan$congress))
+ggtsdisplay(newerHouse.ts)
+```
+
+Now, some more ARIMAs fit to this data.
+
+```{r}
+newerHouse.arima = Arima(newerHouse.ts, order = c(0,0,1),
+                         seasonal = list(order = c(0,0,1), period = 5))
+newerHouse.arima
+{
+  plot(newerHouse.ts)
+  points(newerHouse.arima$fitted, col = "red", type = "l")
+}
+```
+
+Of all attempts, the model above had the best AIC value. That said, it still has some pretty drunk behavior. At this point however, we have decided to make some predictions. 
+
+#### Predictions for the 116th Congress
+
+When we last left our heroic model, we had not captured the structure of the 115th Congress; the data for mean democratic spending is missing. If we get that we will have a prediction for the mean of the 115th Congress. We will use that to fit an ARIMA to Congresses 87 to 115, and then predict the 116th. To get the mean democratic spending for the Congress 115, we will fit another ARIMA to the data we have on democratic spending. We will predict 2018 midterm election turnout by the mean of midterm election turnout from 1962 to 2014.
+
+```{r}
+dem_spend.ts = ts(data = spending_house$blue_mean, start = 94)
+ggtsdisplay(diff(dem_spend.ts))
+dem_spend.arima = Arima(dem_spend.ts, order = c(0,1,0),
+                        seasonal = list(order = c(1,0,0), period = 3))
+dem_spend.arima
+{
+  plot(dem_spend.ts)
+  points(dem_spend.arima$fitted, col = "red", type = "l")
+}
+pred_dem_spend_115 = forecast(dem_spend.arima)$mean
+newHouse.df = rbind(from1974_df_house, c(115,1,0,0,54.7,NA,pred_dem_spend_115[1],0.5540230))
+structure_115 = predict(from1974_lm_house, newdata = newHouse.df%>%filter(congress==115))
+house_structure_full = c(firstModelStructure, house_structure, structure_115)
+newestHouse.ts = ts(data = partisan$red_rep - house_structure_full,
+                start = min(partisan$congress))
+ggtsdisplay(newestHouse.ts)
+newestHouse.arima = Arima(newestHouse.ts, order = c(0,0,1),
+                         seasonal = list(order = c(0,0,1), period = 5))
+time_red_rep_116 = forecast(newestHouse.arima)$mean[1]
+pred_turnout = partisan %>% filter(midterm == 1) %>% .$HouseElections %>% mean()
+newHouse.df = rbind(newHouse.df, c(116,1,1,1,pred_turnout,NA,pred_dem_spend_115[2],NA))
+mean_red_rep_116 = predict(from1974_lm_house, newdata = newHouse.df%>%filter(congress==116),
+                           interval = "prediction")
+full_red_rep_116 = mean_red_rep_116 + time_red_rep_116
+```
+
+```{r, echo=FALSE}
+knitr::kable(data.frame(lwr = round(full_red_rep_116[2]*435,2),
+                        fit = round(full_red_rep_116[1]*435,2),
+                        upr = round(full_red_rep_116[3]*435,2)),
+             col.names = c("Lower", "Fit", "Upper"), 
+             caption = "Predicted Red Members of the House in 116th Congress")
+```
+
+The Senate predictions will come directly from our ARIMA since it looked decent. Attempting to predict for the 33 seats coming up in 2018 with only 29 Congresses worth of data...very iffy.
+
+```{r}
+Senate_red_pred = forecast(Senate.arima)
+lwr_sen = round(Senate_red_pred$lower[1,2]*100, 2)
+upr_sen = round(Senate_red_pred$upper[1,2]*100, 2)
+fit_sen = round(Senate_red_pred$mean[1]*100, 2)
+```
+
+
+
+```{r, echo=FALSE}
+knitr::kable(data.frame(lwr_sen, fit_sen, upr_sen),
+             col.names =  c("Lower", "Fit", "Upper"),
+             caption = "Predicted Red Members of the Senate in 116th Congress")
+```
+
+#### Conclusion
+
+From what we see here, we do not predict a blue wave. We expect, from the point estimate, that Democrats will take the House, but the confidence interval contains the possibility for a solid red majority. The point estimate for the Senate remains firmly red. 
+
 
