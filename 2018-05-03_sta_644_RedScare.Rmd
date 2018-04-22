@@ -11,6 +11,7 @@ library(dplyr)
 library(rvest)
 library(ggplot2)
 library(stringr)
+library(readr)
 theme_set(theme_bw())
 # https://www.brookings.edu/multi-chapter-report/vital-statistics-on-congress/
 ```
@@ -117,7 +118,7 @@ basicSenate = Arima(senate.ts, order = c(0,1,0), seasonal = list(order = c(1,0,0
   #        col = "red", type = "l")
   points( basicSenate$fitted, col = "red", type = "l")
 }
-basicHouse = Arima(house.ts, order = c(1,0,0))
+basicHouse = Arima(house.ts, order = c(1,1,0))
 {
   plot(house.ts)
   points(basicSenate$fitted, col = "red", type = "l")
@@ -126,26 +127,81 @@ basicHouse = Arima(house.ts, order = c(1,0,0))
 
 From these initial, basic models, we see much better results for the Senate than we do for the house. The fit is also not as tight as we would like on either. Now begins the hard part, finding other predictors.
 
-#### Mean Predictors
+#### Other Predictors
 
 What influences the election of Congress? We begin with the ones we hear about consistently: what is the party affiliation of the president, and is it a midterm election?
 
 ```{r}
 partisan$midterm = c(rep(c(0,1), 14), 0)
 partisan$red_pres = c(0,0,0,0,1,1,1,1,0,0,1,1,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1)
-partisan$red_pres_in_election = c(1,red_pres[-29])
+partisan$red_pres_in_election = c(1,partisan$red_pres[-29])
 ```
 
-The columns created above indicate whether voters chose the congress in a midterm election, whether the president who served at the same time as the Congress was a republican, and whether the president at the time of the Congress's election was republican. Some interesting results about these variables:
+The columns created above indicate whether voters chose the congress in a midterm election, whether the president who served at the same time as the Congress was a republican, and whether the president at the time of the Congress's election was republican. We will fit a linear model to see what happens.
+
+```{r, echo=FALSE, eval=FALSE, include=FALSE}
+{
+  par(mfrow = c(2,2))
+  boxplot(partisan$red_sen ~ partisan$red_pres_in_election, pch = 16, 
+     main = "Red Senate vs Pres. Party in Election",
+     xlab = "Red President in Election", ylab = "Red Proporton of Senate Elected")
+  boxplot(partisan$red_sen ~ partisan$red_pres, pch = 16,
+        main = "Red Senate vs Pres. Party in Same Term",
+        xlab = "Red President in in term", ylab = "Red Proporton of Senate Serving")
+}
+```
 
 ```{r}
-{
-  par(mfrow = c(1,2))
-}
-boxplot(partisan$red_sen ~ partisan$red_pres_in_election, pch = 16, 
-     main = "Red Proportion of Senate vs Presidential Affiliation in Election",
-     xlab = "Red President in Election", ylab = "Red Proporton of Senate Elected")
-boxplot(partisan$red_sen ~ partisan$red_pres, pch = 16,
-        main = "Red Proportion of Senate vs Presidential Affiliation in Same Term",
-        xlab = "Red President in in term", ylab = "Red Proporton of Senate Serving")
+senateByPres = lm(red_sen ~ red_pres + red_pres_in_election + midterm + red_pres_in_election:midterm, 
+                  data = partisan)
+houseByPres = lm(red_rep ~ red_pres + red_pres_in_election + midterm + red_pres_in_election:midterm,
+                 data = partisan)
+summary(senateByPres)
+summary(houseByPres)
 ```
+
+
+To my surprise, the only covariate with a reasonable confidence interval is `red_pres` in the senate; the indication is that the Senate tends to lean republican when the president is a republican. There was not a significant relationship between the red proportion of the Congress and the affiliation of the president in office at the time of Congressional elections. Midterm elections also did not have a significant relationship to the composition of either branch. We need to expand our collection of predictors. 
+
+```{r, message=FALSE}
+# source: the Brookings institute
+# 115th results from the Office of the Clerk of the House of Representatives
+house_by_region = read_csv("vitalstats_ch1_tbl3.csv") %>%
+  filter(Congress >= 87) %>%
+  filter(Party == "R") %>%
+  filter(Region != "Total Seats") %>%
+  .[order(.$Congress),]
+house_by_region$Percent = as.numeric(house_by_region$Percent)
+house_election_turnout = read_csv("vitalstats_ch2_tbl1.csv") %>%
+  select(Year, HouseElections) %>%
+  filter(Year >= 1960) %>%
+  mutate(congress = 86+1:nrow(.))
+house_election_turnout[29,] = c(2016,54.7,115)
+partisan = inner_join(partisan, house_election_turnout, by = "congress")
+pres_party_mid_loss = read_csv("vitalstats_ch2_tbl4.csv") %>%
+  filter(Year >= 1960)
+spending_house = read_csv("vitalstats_ch3_tbl2.csv") %>%
+  filter(CandidateType == "All", ExpenditureType %in% c("MeanDem", "MeanRep")) 
+spending_house_red = spending_house %>%
+  filter(ExpenditureType == "MeanRep") %>%
+  .[order(.$Year),]
+spending_house_blue = spending_house %>%
+  filter(ExpenditureType == "MeanDem") %>%
+  .[order(.$Year),]
+spending_house = data_frame(congress = 93+1:nrow(spending_house_red),
+                            Year = spending_house_red$Year, red_mean = spending_house_red$Dollars,
+                            blue_mean = spending_house_blue$Dollars) 
+spending_senate = read_csv("vitalstats_ch3_tbl5.csv") %>%
+  filter(IncumbStatus == "All", ExpenseType %in% c("MeanDem", "MeanRep")) 
+spending_senate_red = spending_senate %>%
+  filter(ExpenseType == "MeanRep") %>%
+  .[order(.$Year),]
+spending_senate_blue = spending_senate %>%
+  filter(ExpenseType == "MeanDem") %>%
+  .[order(.$Year),]
+spending_senate = data_frame(congress = 93+1:nrow(spending_senate_red),
+                            Year = spending_senate_red$Year, red_mean = spending_senate_red$Dollars,
+                            blue_mean = spending_senate_blue$Dollars)
+```
+
+This is a selection from the hundred or so datasets available from the Brookings Institue vital statistics on Congress. These particular chapters were the most relevant to elections, which are the focus of this project. 
