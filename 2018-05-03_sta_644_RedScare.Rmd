@@ -122,7 +122,7 @@ basicSenate = Arima(senate.ts, order = c(0,1,0), seasonal = list(order = c(1,0,0
 basicHouse = Arima(house.ts, order = c(0,1,1))
 {
   plot(house.ts)
-  points(basicSenate$fitted, col = "red", type = "l")
+  points(basicHouse$fitted, col = "red", type = "l")
 }
 ``` 
 
@@ -266,5 +266,33 @@ Democratic spending is also positively correlated with more republicans in the h
 
 The interpretation for the above models, with respect to money, seems to be that when there is more money involved, republicans are more likely to gain seats in the House. Again, this is not a causal model. Democrats should not look at this and think, "well, if we spend less money, the republicans will lose ground."
 
+Let's take a look at the time series for this subset of the data for which we have the additional predictors.
 
+```{r}
+house_structure = from1974_lm_house$fitted.values
+newHouse.ts = ts(data = from1974_df_house$red_rep - house_structure,
+                start = min(from1974_df_house$congress))
+ggtsdisplay(newHouse.ts)
+```
+
+Would you look at that, it's not entirely awful like it was before. Let's see what R thinks of it.
+
+```{r}
+newHouse.arima = auto.arima(newHouse.ts)
+newHouse.arima
+```
+
+Apparently nothing. Here are some configurations I tried.
+
+```{r}
+newHouse.arima = Arima(newHouse.ts,order = c(0,0,2), 
+                       seasonal = list(order = c(1,0,1), period = 3 ))
+newHouse.arima
+{
+  plot(newHouse.ts)
+  points(newHouse.arima$fitted, col = "red", type = "l")
+}
+```
+
+Oh look, disappointment. 
 
