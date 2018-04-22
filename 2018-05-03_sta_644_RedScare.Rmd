@@ -12,6 +12,7 @@ library(rvest)
 library(ggplot2)
 library(stringr)
 library(readr)
+library(GGally)
 theme_set(theme_bw())
 # https://www.brookings.edu/multi-chapter-report/vital-statistics-on-congress/
 ```
@@ -118,7 +119,7 @@ basicSenate = Arima(senate.ts, order = c(0,1,0), seasonal = list(order = c(1,0,0
   #        col = "red", type = "l")
   points( basicSenate$fitted, col = "red", type = "l")
 }
-basicHouse = Arima(house.ts, order = c(1,1,0))
+basicHouse = Arima(house.ts, order = c(0,1,1))
 {
   plot(house.ts)
   points(basicSenate$fitted, col = "red", type = "l")
@@ -204,4 +205,48 @@ spending_senate = data_frame(congress = 93+1:nrow(spending_senate_red),
                             blue_mean = spending_senate_blue$Dollars)
 ```
 
-This is a selection from the hundred or so datasets available from the Brookings Institue vital statistics on Congress. These particular chapters were the most relevant to elections, which are the focus of this project. 
+This is a selection from the hundred or so datasets available from the Brookings Institue vital statistics on Congress. These particular chapters were the most relevant to elections, which are the focus of this project. Much of the data is not available for all years of interest, so we will need multiple models to come together in an ensemble at the end. 
+
+The House is up first since it has more pathologies to explain than the Senate. We begin by looking at voter turnout and candidate funding. The data we have for these variables starts at 1974. We must be careful to not let $p$ approach too close to $n$ given the limited amount of data.
+
+```{r}
+from1974_df_house = partisan %>%
+  filter(94 <= congress & congress <= 114) %>%
+  cbind(.,red_mean = spending_house$red_mean, blue_mean = spending_house$blue_mean) %>%
+  select(congress,red_pres,red_pres_in_election,midterm,HouseElections,red_mean,blue_mean,red_rep) 
+ggpairs(data = from1974_df_house)
+```
+
+We should probably highlight these two relations.
+
+```{r}
+g_red = ggplot(data = from1974_df_house, aes(x = red_mean, y = red_rep)) +
+  geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Proportion Red in the House vs Mean Campaign Spending of Republicans") +
+  xlab("Mean Democrat Campaign Spending") + ylab("Proportion Red")
+g_blue = ggplot(data = from1974_df_house, aes(x = blue_mean, y = red_rep)) +
+  geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Proportion Red in the House vs Mean Campaign Spending of Democrats") +
+  xlab("Mean Democrat Campaign Spending") + ylab("Proportion Red")
+grid.arrange(g_red, g_blue, nrow = 2)
+```
+
+The first graph may seem to indicate that Republican represenation increases with an increase in campaign spending, but we must keep in mind that this is a correlative relationship as Republican representation also increases as Democrtic spending increases. Democrats also tend to spend more money than republicans for House elections on average. A point of high leverage for the republicans occurs in the 2010 midterm elections. 
+
+One thing we should also note is this relationship between voter turnout and red represenation in the house.
+
+```{r}
+ggplot(data = from1974_df_house, aes(x = HouseElections/100, y = red_rep)) +
+  geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Red Proportion Elected vs Overall Voter Turnout in House Elections") +
+  xlab("Proportion Turnout for Election") + ylab("Proportion Red in House")
+```
+
+What we should take away from this graph is that voter turnout does not display any relation to the composition of the House elected by said voters. Whether this is an indictment of the "silent majority" theory is left to the reader to interpret. We should also note that the large gap of no points between 0.425 and 0.475 in the figure above is the split in turnout between midterm and presidential election years. 
+
+Now let's hit this monster with an linear model and see what happens.
+
+```{r}
+
+```
+
